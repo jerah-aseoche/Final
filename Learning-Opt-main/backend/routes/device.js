@@ -1,122 +1,88 @@
 import express from "express";
 import { db } from "../db.js";
+import { sendCommand } from "../server.js";
 
 const router = express.Router();
 
-/* =========================
-   WEB BYPASS (CONTROL + LOG)
-   ========================= */
-router.post("/bypass/on", async (req, res) => {
-  try {
-    // Control device
-    await db.query(
-      "INSERT INTO device_commands (command, source) VALUES (?, ?)",
-      ["ON", "web"]
-    );
+/* WEB CONTROL */
+router.post("/command/:cmd", async (req,res)=>{
+  const cmd = req.params.cmd.toUpperCase();
 
-    // Log bypass
-    await db.query(
-      "INSERT INTO detection_bypass_logs (source, action, status, details) VALUES (?, ?, ?, ?)",
-      ["web", "ON", "SUCCESS", "Web bypass activated"]
-    );
+  sendCommand(cmd);
 
-    res.json({ message: "Web bypass ON" });
-  } catch (err) {
-    console.error("BYPASS ON ERROR:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+  await db.query(
+    "INSERT INTO detection_bypass_logs (action,source,status,details) VALUES (?,?,?,?)",
+    [cmd,"web","ACKED","Manual control from web app"]
+  );
+
+  res.json({ ok:true });
 });
 
-router.post("/bypass/off", async (req, res) => {
-  try {
-    // Control device
-    await db.query(
-      "INSERT INTO device_commands (command, source) VALUES (?, ?)",
-      ["OFF", "web"]
-    );
+/* PHYSICAL */
+router.post("/physical-bypass", async (req,res)=>{
+  const { action, source, status, details } = req.body;
 
-    // Log bypass
-    await db.query(
-      "INSERT INTO detection_bypass_logs (source, action, status, details) VALUES (?, ?, ?, ?)",
-      ["web", "OFF", "SUCCESS", "Web bypass deactivated"]
-    );
+  await db.query(
+    "INSERT INTO bypass_logs (action,source,status,details) VALUES (?,?,?,?)",
+    [action,source,status,details]
+  );
 
-    res.json({ message: "Web bypass OFF" });
-  } catch (err) {
-    console.error("BYPASS OFF ERROR:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+  res.json({ ok:true });
 });
 
-/* =========================
-   ESP / DEVICE COMMAND POLL
-   ========================= */
-router.get("/command", async (req, res) => {
-  try {
-    const [rows] = await db.query(
-      "SELECT command FROM device_commands ORDER BY id DESC LIMIT 1"
-    );
+/* AUTO STOP */
+router.post("/auto-stop", async (req,res)=>{
+  const { source, details } = req.body;
 
-    if (rows.length === 0) {
-      return res.json({ command: "NONE" });
-    }
+  await db.query(
+    "INSERT INTO detection_bypass_logs (action,source,status,details) VALUES (?,?,?,?)",
+    ["AUTO_STOP",source,"SUCCESS",details]
+  );
 
-    res.json({ command: rows[0].command });
-  } catch (err) {
-    console.error("COMMAND FETCH ERROR:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+  res.json({ ok:true });
 });
 
-/* =========================
-   SENSOR LOGS (PENDULUM)
-   ========================= */
-router.post("/sensor-logs", async (req, res) => {
-  try {
-    const { event, status, details } = req.body;
-
-    await db.query(
-      "INSERT INTO detection_sensor_logs (event, status, details) VALUES (?, ?, ?)",
-      [event, status, details]
-    );
-
-    res.json({ message: "Sensor log saved" });
-  } catch (err) {
-    console.error("SENSOR LOG ERROR:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+/* ACK */
+router.post("/ack", async (req,res)=>{
+  res.json({ ok:true });
 });
 
-/* =========================
-   SYSTEM / DETECTION LOGS
-   ========================= */
-router.post("/detection-logs", async (req, res) => {
-  try {
-    const { event, status, details } = req.body;
-
-    await db.query(
-      "INSERT INTO detection_logs (event, status, details) VALUES (?, ?, ?)",
-      [event, status, details]
-    );
-
-    res.json({ message: "Detection log saved" });
-  } catch (err) {
-    console.error("DETECTION LOG ERROR:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+/* FETCH */
+router.get("/sensor-logs", async(req,res)=>{
+  const [rows] = await db.query(
+    "SELECT * FROM detection_sensor_logs ORDER BY created_at DESC"
+  );
+  res.json(rows);
 });
 
-/* =========================
-   CLEAR COMMANDS (OPTIONAL)
-   ========================= */
-router.delete("/command", async (req, res) => {
-  try {
-    await db.query("DELETE FROM device_commands");
-    res.json({ message: "Commands cleared" });
-  } catch (err) {
-    console.error("CLEAR COMMAND ERROR:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+router.get("/web-bypass-logs", async(req,res)=>{
+  const [rows] = await db.query(
+    "SELECT * FROM detection_bypass_logs ORDER BY created_at DESC"
+  );
+  res.json(rows);
+});
+
+router.get("/device-bypass-logs", async(req,res)=>{
+  const [rows] = await db.query(
+    "SELECT * FROM bypass_logs ORDER BY created_at DESC"
+  );
+  res.json(rows);
+});
+
+/* CLEAR */
+router.delete("/sensor-logs", async(req,res)=>{
+  await db.query("TRUNCATE detection_sensor_logs");
+  res.json({ok:true});
+});
+
+router.delete("/web-bypass-logs", async(req,res)=>{
+  await db.query("TRUNCATE detection_bypass_logs");
+  res.json({ok:true});
+});
+
+router.delete("/device-bypass-logs", async(req,res)=>{
+  await db.query("TRUNCATE bypass_logs");
+  res.json({ok:true});
 });
 
 export default router;

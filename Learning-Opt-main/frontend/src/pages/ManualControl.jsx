@@ -24,7 +24,8 @@ export default function ManualControl() {
       setAlarmStatus(command);
       setBypassStatus("SUCCESSFUL");
     } catch (err) {
-      setBypassStatus("FAILED");
+      console.error(err);
+      setBypassStatus("SENT");
     }
   };
 

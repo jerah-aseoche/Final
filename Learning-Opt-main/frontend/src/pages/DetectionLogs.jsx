@@ -5,102 +5,103 @@ import { useNavigate } from "react-router-dom";
 export default function DetectionLogs() {
   const navigate = useNavigate();
 
-  const [sensorLogs, setSensorLogs] = useState([]);
-  const [bypassLogs, setBypassLogs] = useState([]);
+  const [activeTab, setActiveTab] = useState("sensor");
+  const [logs, setLogs] = useState([]);
 
+  /* ─── FETCH LOGS (TAB-AWARE) ───────────────── */
   const fetchLogs = async () => {
     try {
-      const sensorRes = await axios.get(
-        "http://localhost:3000/api/device/sensor-logs"
-      );
-      const bypassRes = await axios.get(
-        "http://localhost:3000/api/device/bypass-logs"
-      );
+      let url = "/api/device/sensor-logs";
 
-      setSensorLogs(sensorRes.data);
-      setBypassLogs(bypassRes.data);
+      if (activeTab === "web") url = "/api/device/web-bypass-logs";
+      if (activeTab === "device") url = "/api/device/device-bypass-logs";
+
+      const res = await axios.get(url);
+      setLogs(res.data);
     } catch (err) {
       console.error("Failed to fetch logs", err);
     }
   };
 
+  /* ─── POLLING (ONLY ACTIVE TAB) ───────────── */
   useEffect(() => {
     fetchLogs();
-    const interval = setInterval(fetchLogs, 2000); // LIVE UPDATE
+    const interval = setInterval(fetchLogs, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [activeTab]);
 
-  const goHome = () => navigate("/home");
-  const logout = () => navigate("/login");
+  /* ─── CLEAR CURRENT TAB ───────────────────── */
+  const clearCurrent = async () => {
+    try {
+      let url = "/api/device/sensor-logs";
 
-  const clearSensorLogs = async () => {
-    await axios.delete("http://localhost:3000/api/device/sensor-logs");
-    fetchLogs();
-  };
+      if (activeTab === "web") url = "/api/device/web-bypass-logs";
+      if (activeTab === "device") url = "/api/device/device-bypass-logs";
 
-  const clearBypassLogs = async () => {
-    await axios.delete("http://localhost:3000/api/device/bypass-logs");
-    fetchLogs();
+      await axios.delete(url);
+      setLogs([]);
+    } catch (err) {
+      console.error("Clear failed", err);
+    }
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col overflow-hidden text-white">
+    <div className="relative min-h-screen text-white">
 
-      {/* ─── BLURRED BACKGROUND ───────────────────────────── */}
+      {/* ─── BACKGROUND ───────────────────────── */}
       <div
         className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: "url('/login-bg.jpg')" }}
       />
-      <div className="absolute inset-0 backdrop-blur-sm bg-[#0b3c5d]/70" />
+      <div className="absolute inset-0 backdrop-blur-md bg-[#0b3c5d]/70" />
 
-      {/* ─── HEADER (UNCHANGED) ───────────────────────────── */}
-      <header className="relative z-10 w-full h-14 flex items-center justify-between px-6 bg-white shadow-md">
+      {/* ─── HEADER ───────────────────────────── */}
+      <header className="relative z-10 h-16 flex items-center justify-between px-6 bg-white shadow-md">
         <button
-          onClick={goHome}
-          className="text-black font-semibold hover:text-[#6EB1D6] transition"
+          onClick={() => navigate("/home")}
+          className="text-black font-semibold hover:text-[#6EB1D6]"
         >
           ← Home
         </button>
 
-        <img
-          src="/banner.png"
-          alt="Banner"
-          className="h-10 object-contain mx-auto"
-        />
+        <img src="/banner.png" alt="Banner" className="h-10" />
 
         <button
-          onClick={logout}
-          className="bg-red-500 hover:bg-red-600 px-4 py-1.5 rounded-md text-white font-medium transition"
+          onClick={() => navigate("/login")}
+          className="bg-red-500 hover:bg-red-600 px-4 py-1.5 rounded-md text-white"
         >
           Logout
         </button>
       </header>
 
-      {/* ─── CONTENT ─────────────────────────────────────── */}
-      <main className="relative z-10 flex-1 overflow-y-auto p-6 space-y-6 max-w-6xl mx-auto w-full">
+      {/* ─── CONTENT ─────────────────────────── */}
+      <main className="relative z-10 p-6 max-w-6xl mx-auto">
 
-        {/* ─── SENSOR LOGS (VERTICAL / FULL WIDTH) ───────── */}
-        <section className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-xl p-5">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-semibold">
-              Detection – Sensor
-            </h2>
+        <section className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-xl p-6">
+
+          {/* ─── TABS ─────────────────────────── */}
+          <div className="flex gap-3 mb-4">
+            <Tab label="Sensor" active={activeTab==="sensor"} onClick={()=>setActiveTab("sensor")} />
+            <Tab label="Web Control" active={activeTab==="web"} onClick={()=>setActiveTab("web")} />
+            <Tab label="Device Trigger" active={activeTab==="device"} onClick={()=>setActiveTab("device")} />
+
+            <div className="flex-1" />
+
             <button
-              onClick={clearSensorLogs}
+              onClick={clearCurrent}
               className="bg-red-500 hover:bg-red-600 px-4 py-1.5 rounded-md text-sm"
             >
-              Clear Logs
+              Clear Current
             </button>
           </div>
 
-          <div className="max-h-[400px] overflow-y-auto space-y-2">
-            {sensorLogs.length === 0 && (
-              <p className="text-center opacity-60 text-sm">
-                No sensor logs available
-              </p>
+          {/* ─── LOG LIST ─────────────────────── */}
+          <div className="max-h-[420px] overflow-y-auto space-y-2">
+            {logs.length === 0 && (
+              <p className="text-center opacity-60 text-sm">No logs available</p>
             )}
 
-            {sensorLogs.map(log => (
+            {logs.map(log => (
               <div
                 key={log.id}
                 className={`p-3 rounded-md text-sm border ${
@@ -110,11 +111,10 @@ export default function DetectionLogs() {
                 }`}
               >
                 <p className="font-semibold">
-                  {log.event} — {log.status}
+                  {(log.source || "SYSTEM").toUpperCase()} —{" "}
+                  {log.action || log.event} — {log.status}
                 </p>
-                <p className="text-xs opacity-70">
-                  {log.details}
-                </p>
+                <p className="text-xs opacity-70">{log.details}</p>
                 <p className="text-xs opacity-50 mt-1">
                   {new Date(log.created_at).toLocaleString()}
                 </p>
@@ -122,52 +122,24 @@ export default function DetectionLogs() {
             ))}
           </div>
         </section>
-
-        {/* ─── BYPASS LOGS (VERTICAL / FULL WIDTH) ───────── */}
-        <section className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-xl p-5">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-semibold">
-              Detection – Bypass / Manual Control
-            </h2>
-            <button
-              onClick={clearBypassLogs}
-              className="bg-red-500 hover:bg-red-600 px-4 py-1.5 rounded-md text-sm"
-            >
-              Clear Logs
-            </button>
-          </div>
-
-          <div className="max-h-[400px] overflow-y-auto space-y-2">
-            {bypassLogs.length === 0 && (
-              <p className="text-center opacity-60 text-sm">
-                No bypass logs available
-              </p>
-            )}
-
-            {bypassLogs.map(log => (
-              <div
-                key={log.id}
-                className={`p-3 rounded-md text-sm border ${
-                  log.status === "FAIL"
-                    ? "border-red-400 bg-red-500/10"
-                    : "border-white/10 bg-white/5"
-                }`}
-              >
-                <p className="font-semibold">
-                  {log.source.toUpperCase()} — {log.action} — {log.status}
-                </p>
-                <p className="text-xs opacity-70">
-                  {log.details}
-                </p>
-                <p className="text-xs opacity-50 mt-1">
-                  {new Date(log.created_at).toLocaleString()}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
       </main>
     </div>
+  );
+}
+
+/* ─── TAB BUTTON ───────────────────────────── */
+
+function Tab({ label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 rounded-lg text-sm transition ${
+        active
+          ? "bg-[#6EB1D6] text-black font-semibold"
+          : "bg-white/10 hover:bg-white/20"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
