@@ -7,9 +7,17 @@ export default function DetectionLogs() {
 
   const [activeTab, setActiveTab] = useState("sensor");
   const [logs, setLogs] = useState([]);
+  const [visible, setVisible] = useState(true);
 
-  /* ─── FETCH LOGS (TAB-AWARE) ───────────────── */
+  useEffect(() => {
+    const onVis = () => setVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
+  /* ─── FETCH LOGS (TAB-AWARE, DATA ONLY) ───────────── */
   const fetchLogs = async () => {
+    if (!visible) return;
     try {
       let url = "/api/device/sensor-logs";
 
@@ -23,14 +31,44 @@ export default function DetectionLogs() {
     }
   };
 
-  /* ─── POLLING (ONLY ACTIVE TAB) ───────────── */
+  /* ─── POLLING (ONLY ACTIVE TAB) ───────────────────── */
   useEffect(() => {
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
+    let mounted = true;
+
+    const poll = async () => {
+      if (!mounted) return;
+      await fetchLogs();
+    };
+
+    poll();
+
+    const interval = setInterval(poll, 3500); // slower, safer
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, [activeTab]);
 
-  /* ─── CLEAR CURRENT TAB ───────────────────── */
+  /* ─── AUTO STOP DETECTION (READ-ONLY UX LOGIC) ────── */
+  useEffect(() => {
+    if (!logs.length) return;
+
+    const lastLog = logs[0]; // backend already sorts DESC
+
+    const isAutoStop =
+      lastLog?.action === "AUTO_STOP" ||
+      lastLog?.event === "AUTO_STOP";
+
+    if (isAutoStop) {
+      console.log("[UI] AUTO STOP detected:", lastLog);
+    }
+ {
+      console.log("[UI] AUTO STOP detected in logs:", lastLog);
+      // Intentionally NOT mutating alarm state here
+    }
+  }, [logs]);
+
+  /* ─── CLEAR CURRENT TAB ───────────────────────────── */
   const clearCurrent = async () => {
     try {
       let url = "/api/device/sensor-logs";
@@ -98,28 +136,46 @@ export default function DetectionLogs() {
           {/* ─── LOG LIST ─────────────────────── */}
           <div className="max-h-[420px] overflow-y-auto space-y-2">
             {logs.length === 0 && (
-              <p className="text-center opacity-60 text-sm">No logs available</p>
+              <p className="text-center opacity-60 text-sm">
+                No logs available
+              </p>
             )}
 
-            {logs.map(log => (
-              <div
-                key={log.id}
-                className={`p-3 rounded-md text-sm border ${
-                  log.status === "FAIL"
-                    ? "border-red-400 bg-red-500/10"
-                    : "border-white/10 bg-white/5"
-                }`}
-              >
-                <p className="font-semibold">
-                  {(log.source || "SYSTEM").toUpperCase()} —{" "}
-                  {log.action || log.event} — {log.status}
-                </p>
-                <p className="text-xs opacity-70">{log.details}</p>
-                <p className="text-xs opacity-50 mt-1">
-                  {new Date(log.created_at).toLocaleString()}
-                </p>
-              </div>
-            ))}
+            {logs.map(log => {
+              const isAutoStop =
+                log.action === "AUTO_STOP" ||
+                log.event === "AUTO_STOP";
+
+              return (
+                <div
+                  key={log.id}
+                  className={`p-3 rounded-md text-sm border ${
+                    isAutoStop
+                      ? "border-yellow-400 bg-yellow-500/10"
+                      : log.status === "FAIL"
+                      ? "border-red-400 bg-red-500/10"
+                      : "border-white/10 bg-white/5"
+                  }`}
+                >
+                  <p className="font-semibold">
+                    {(log.source || "SYSTEM").toUpperCase()} —{" "}
+                    {log.action || log.event} — {log.status}
+                  </p>
+
+                  <p className="text-xs opacity-70">{log.details}</p>
+
+                  <p className="text-xs opacity-50 mt-1">
+                    {new Date(log.created_at).toLocaleString()}
+                  </p>
+
+                  {isAutoStop && (
+                    <p className="mt-1 text-xs font-semibold text-yellow-300">
+                      ⚠ AUTO STOP ACTIVATED
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
       </main>
